@@ -40,10 +40,11 @@ int main() {
     socklen_t server_length = sizeof(server_hint);
     server_hint.sin_family = AF_INET;
     server_hint.sin_port = htons(54000);
-    server_hint.sin_addr.s_addr = INADDR_ANY;
+    //server_hint.sin_addr.s_addr = INADDR_ANY;
+    inet_pton(AF_INET, "0.0.0.0", &server_hint.sin_addr);
     memset(&server_hint.sin_zero, 0, 8);
 
-    if (bind(server_socket, reinterpret_cast<sockaddr*>(&server_hint), sizeof(server_length)) == -1) {
+    if (bind(server_socket, reinterpret_cast<sockaddr*>(&server_hint), server_length) == -1) {
         std::cerr << "Failed to bind server socket!\n";
         return -1;
     }
