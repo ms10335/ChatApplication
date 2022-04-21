@@ -23,8 +23,8 @@ int counter = 0;
 
 void set_client_name(int, const std::string&);
 void handle_client(int, int);
-int send_message(const std::string&, int );
-int send_message(int, int );
+void send_message(const std::string&, int);
+void send_message(int, int);
 void close_connection(int);
 
 int main() {
@@ -60,24 +60,86 @@ int main() {
     socklen_t client_size = sizeof(client_socket);
     int val_client_socket{};
     while (true) {
-
-        if((val_client_socket = accept(server_socket,reinterpret_cast<sockaddr*>(&client_socket), &client_size)) == -1) {
+        if ((val_client_socket = accept(server_socket, reinterpret_cast<sockaddr*>(&client_socket), &client_size)) == -1) {
             std::cerr << "Error during accept conection!\n";
             return -1;
         }
         counter++;
-        std::thread t(handle_client,client_socket,counter);
+        std::thread t(handle_client, val_client_socket, counter);
         std::lock_guard<std::mutex> guard(clients_mtx);
         clients.push_back({counter, "New one", val_client_socket, std::move(t)});
-
     }
-    for (int i = 0; i < clients.size(); ++i) {
-        if(clients[i].th.joinable()) {
+    for (size_t i = 0; i < clients.size(); ++i) {
+        if (clients[i].th.joinable()) {
             clients[i].th.join();
         }
     }
-    
-    //remebert to close 
+
+    // remebert to close
     close(server_socket);
     return 0;
+}
+void set_client_name(int id, const std::string& name) {
+    for (size_t i = 0; i < clients.size(); ++i) {
+        if (clients[i].id == id) {
+            clients[i].name = name;
+        }
+    }
+}
+// send to all clients except sender
+void send_message(const std::string& message, int client_id) {
+    for (size_t i = 0; i < clients.size(); ++i) {
+        if (clients[i].id != client_id) {
+            send(clients[i].socket, message.c_str(), message.size(), 0);
+        }
+    }
+}
+// send a number to all clients except sender
+void send_message(int number, int client_id) {
+    for (size_t i = 0; i < clients.size(); ++i) {
+        if (clients[i].id != client_id) {
+            send(clients[i].socket, &number, sizeof(number), 0);
+        }
+    }
+}
+// how to close connection
+void close_connection(int id) {
+    for (size_t i = 0; i < clients.size(); ++i) {
+        if (clients[i].id == id) {
+            std::lock_guard<std::mutex> guard(clients_mtx);
+            clients[i].th.detach();
+            clients.erase(clients.begin() + i);
+            close(clients[i].socket);
+            break;
+        }
+    }
+}
+
+void handle_client(int client_socket, int clinet_id) {
+    char name[MAX_INPUT];
+    char str[MAX_INPUT];
+    recv(client_socket, name, MAX_INPUT, 0);
+    set_client_name(clinet_id, name);
+
+    std::string welcome_msg = std::string(name) + " has joined";
+    send_message(clinet_id, clinet_id);
+    send_message(welcome_msg, clinet_id);
+
+    while (true) {
+        int bytes_received = recv(client_socket, str, MAX_INPUT, 0);
+        if (bytes_received < 1) {
+            return;
+        }
+        if (std::string(str) == "exit") {
+            std::string bye_msg = std::string(name) + "has left the building!";
+            send_message(clinet_id, clinet_id);
+            send_message(bye_msg, clinet_id);
+            close_connection(clinet_id);
+            return;
+        }
+    }
+    send_message(std::string(name), clinet_id);
+    send_message(clinet_id, clinet_id);
+    send_message(std::string(str),clinet_id);
+    std::cout << '\n';
 }
