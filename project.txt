@@ -1,0 +1,13 @@
+// Write a console Instant Messenger application. 
+// It should allow chatting as well as file sending. 
+// There should be a queue allowing adding/removing/stopping/retrying files to send.
+// Project has to be tested on Unit Test level.
+// language: C++17 (threads, filesystem), minimize C usage
+// unit tests: gtest
+// environment: Linux
+// compiler: g++
+// build: cmake
+// vcs: publicly available git
+// libraries: yes
+// scripts: no
+// external applications: no
