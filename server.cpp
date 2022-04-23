@@ -1,171 +1,154 @@
 #include <arpa/inet.h>
 #include <bits/stdc++.h>
 #include <errno.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <chrono>
+#include <fstream>
 #include <mutex>
-#include <thread>
-#define MAX_LEN 200
-#define NUM_COLORS 6
+#include <string>
 
-using namespace std;
 
-struct terminal {
-    int id;
-    string name;
-    int socket;
-    thread th;
+class Server {
+private:
+    std::fstream file;
+    int socket_descriptor;
+    int clientSocket;
+    sockaddr_in server_hint;
+    sockaddr_in client;
+    socklen_t clientSize = sizeof(client);
+    char host[NI_MAXHOST];
+    char svc[NI_MAXSERV];
+
+    void create_socket();
+    void bind_socket();
+    void set_listen();
+    void accept_connection();
+    void transmit_file();
+    void handleInforamtion();
+
+public:
+    Server() {
+        std::cout << "Start Server Session:\n";
+        create_socket();
+        bind_socket();
+        set_listen();
+        accept_connection();
+        handleInforamtion();
+    }
 };
 
-vector<terminal> clients;
-string def_col = "\033[0m";
-string colors[] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m"};
-int seed = 0;
-mutex cout_mtx, clients_mtx;
-
-string color(int code);
-void set_name(int id, char name[]);
-void shared_print(string str, bool endLine);
-int broadcast_message(string message, int sender_id);
-int broadcast_message(int num, int sender_id);
-void end_connection(int id);
-void handle_client(int client_socket, int id);
-
-int main() {
-    int server_socket;
-    if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        perror("socket: ");
-        exit(-1);
-    }
-
-    struct sockaddr_in server;
-    server.sin_family = AF_INET;
-    server.sin_port = htons(10000);
-    server.sin_addr.s_addr = INADDR_ANY;
-    bzero(&server.sin_zero, 0);
-
-    if ((bind(server_socket, (struct sockaddr*)&server, sizeof(struct sockaddr_in))) == -1) {
-        perror("bind error: ");
-        exit(-1);
-    }
-
-    if ((listen(server_socket, 8)) == -1) {
-        perror("listen error: ");
-        exit(-1);
-    }
-
-    struct sockaddr_in client;
-    int client_socket;
-    unsigned int len = sizeof(sockaddr_in);
-
-    cout << colors[NUM_COLORS - 1] << "\n\t  ====== Welcome to the chat-room ======   " << endl
-         << def_col;
-
-    while (1) {
-        if ((client_socket = accept(server_socket, (struct sockaddr*)&client, &len)) == -1) {
-            perror("accept error: ");
-            exit(-1);
-        }
-        seed++;
-        thread t(handle_client, client_socket, seed);
-        lock_guard<mutex> guard(clients_mtx);
-        clients.push_back({seed, string("Anonymous"), client_socket, (move(t))});
-    }
-
-    for (int i = 0; i < clients.size(); i++) {
-        if (clients[i].th.joinable())
-            clients[i].th.join();
-    }
-
-    close(server_socket);
-    return 0;
-}
-
-string color(int code) {
-    return colors[code % NUM_COLORS];
-}
-
-// Set name of client
-void set_name(int id, char name[]) {
-    for (int i = 0; i < clients.size(); i++) {
-        if (clients[i].id == id) {
-            clients[i].name = string(name);
-        }
+void Server::create_socket() {
+    socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_descriptor == -1) {
+        std::cerr << "Failed to connect to server\n";
+        exit(EXIT_FAILURE);
     }
 }
-
-// For synchronisation of cout statements
-void shared_print(string str, bool endLine = true) {
-    lock_guard<mutex> guard(cout_mtx);
-    cout << str;
-    if (endLine)
-        cout << endl;
-}
-
-// Broadcast message to all clients except the sender
-int broadcast_message(string message, int sender_id) {
-    char temp[MAX_LEN];
-    strcpy(temp, message.c_str());
-    for (int i = 0; i < clients.size(); i++) {
-        if (clients[i].id != sender_id) {
-            send(clients[i].socket, temp, sizeof(temp), 0);
-        }
+void Server::bind_socket() {
+    server_hint.sin_family = AF_INET;
+    server_hint.sin_port = htons(54000);
+    inet_pton(AF_INET, "0.0.0.0", &server_hint.sin_addr);
+    if (bind(socket_descriptor, (sockaddr*)&server_hint, sizeof(server_hint)) == -1) {
+        std::cerr << "Failed to bind socket\n";
+        exit(EXIT_FAILURE);
     }
 }
-
-// Broadcast a number to all clients except the sender
-int broadcast_message(int num, int sender_id) {
-    for (int i = 0; i < clients.size(); i++) {
-        if (clients[i].id != sender_id) {
-            send(clients[i].socket, &num, sizeof(num), 0);
-        }
+void Server::set_listen() {
+    if (listen(socket_descriptor, SOMAXCONN) == -1) {
+        std::cerr << "Cannot listen on specyfic port\n";
+        exit(EXIT_FAILURE);
     }
 }
+void Server::accept_connection() {
+    clientSocket = accept(socket_descriptor, (sockaddr*)&client, &clientSize);
+    if (clientSocket == -1) {
+        std::cerr << "Cannot establish connection with client\n";
+    }
+    // close the listening server socket
+    close(socket_descriptor);
+    memset(host, 0, NI_MAXHOST);
+    memset(svc, 0, NI_MAXSERV);
 
-void end_connection(int id) {
-    for (int i = 0; i < clients.size(); i++) {
-        if (clients[i].id == id) {
-            lock_guard<mutex> guard(clients_mtx);
-            clients[i].th.detach();
-            clients.erase(clients.begin() + i);
-            close(clients[i].socket);
+    int result = getnameinfo((sockaddr*)&client, sizeof(client), host, NI_MAXHOST, svc, NI_MAXSERV, 0);
+
+    if (result) {
+        std::cout << host << " conected on " << svc << '\n';
+    } else {
+        inet_ntop(AF_INET, &client.sin_addr, host, NI_MAXHOST);
+        std::cout << host << " conected on " << ntohs(client.sin_port) << '\n';
+    }
+}
+void Server::transmit_file() {
+    namespace fs = std::filesystem;
+    std::string file_path = "/home/marcins/Data/Server/server.txt";
+    std::fstream file;
+    fs::path p = file_path;
+    file.open(file_path, std::ios_base::in | std::ios_base::binary);
+    if(file.is_open()) {
+        std::cout << "File is ready to send\n";
+    }else {
+        std::cout << "File is not exist\n";
+        return;
+    }
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::cout << "Data to transimit" << content.size() << "bytes\n";  
+    std::cout << "Sending...\n";
+    int bytesFilesSend = send(clientSocket, content.c_str(), content.length(), 0);
+    std::cout << "Bytes sent: " << bytesFilesSend <<'\n';
+    file.close();
+}
+void Server::handleInforamtion() {
+    auto time_now = std::chrono::steady_clock::now();
+    int bytesRead = 0;
+    int bytesWrite = 0;
+    char buf[4096];
+    while (true) {
+        // rec messaga from client
+        memset(buf, 0, 4096);
+        bytesRead += recv(clientSocket, buf, 4096, 0);
+        if (bytesRead == -1) {
+            std::cerr << "There was a connecion issue\n";
             break;
         }
+        if (bytesRead == 0) {
+            std::cerr << "Client is disconected\n";
+            break;
+        }
+        if (!strcmp(buf, "exit")) {
+            std::cerr << "Client has disconected\n";
+            break;
+        }
+        if(! strcmp(buf, "send")) {
+            transmit_file();
+            continue;
+        }
+        std::cout << "Client: " << buf << '\n';
+        std::cout << ">";
+        std::string answer;
+        getline(std::cin, answer);
+        memset(buf, 0, 4096);
+        strcpy(buf, answer.c_str());
+        if (answer == "exit") {
+            // closed conection by serever
+            send(clientSocket, buf, strlen(buf), 0);
+            break;
+        }
+        // send the messag to client
+        bytesWrite += send(clientSocket, buf, strlen(buf), 0);
     }
+    auto time_end = std::chrono::steady_clock::now();
+    close(clientSocket);
+    std::cout << "\t**********SERVER SESSION**********\n";
+    std::cout << "Bytes written: " << bytesWrite << '\n';
+    std::cout << "Bytes read: " << bytesRead << '\n';
+    std::cout << "Elapse time : " << std::chrono::duration_cast<std::chrono::seconds>(time_end - time_now).count() << "sec\n";
 }
 
-void handle_client(int client_socket, int id) {
-    char name[MAX_LEN], str[MAX_LEN];
-    recv(client_socket, name, sizeof(name), 0);
-    set_name(id, name);
-
-    // Display welcome message
-    string welcome_message = string(name) + string(" has joined");
-    broadcast_message("#NULL", id);
-    broadcast_message(id, id);
-    broadcast_message(welcome_message, id);
-    shared_print(color(id) + welcome_message + def_col);
-
-    while (1) {
-        int bytes_received = recv(client_socket, str, sizeof(str), 0);
-        if (bytes_received <= 0)
-            return;
-        if (strcmp(str, "#exit") == 0) {
-            // Display leaving message
-            string message = string(name) + string(" has left");
-            broadcast_message("#NULL", id);
-            broadcast_message(id, id);
-            broadcast_message(message, id);
-            shared_print(color(id) + message + def_col);
-            end_connection(id);
-            return;
-        }
-        broadcast_message(string(name), id);
-        broadcast_message(id, id);
-        broadcast_message(string(str), id);
-        shared_print(color(id) + name + " : " + def_col + str);
-    }
+int main() {
+    Server ss;
 }
