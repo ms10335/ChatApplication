@@ -11,6 +11,7 @@
 #include <fstream>
 #include <mutex>
 #include <string>
+#include <sstream>
 
 #define BUFLENGTH 1024
 namespace fs = std::filesystem;
@@ -91,9 +92,14 @@ void Client::handleInformation() {
     std::cout << "Elapse time : " << std::chrono::duration_cast<std::chrono::seconds>(time_end - time_start).count() << "sec\n";
 }
 void Client::fileReceived() {
-    std::string file_path = "/home/marcins/Data/Client/client_file.txt";
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream datetime;
+    datetime << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %X");
+    std::string file_path = "/home/marcins/Data/Client/";
+    std::string new_path = file_path + "client_" + datetime.str() + ".txt";
     std::fstream file;
-    file.open(file_path, std::ios::out | std::ios::app | std::ios::binary);
+    file.open(new_path, std::ios::out | std::ios::app | std::ios::binary);
     if (file.is_open()) {
         std::cout << "File is ready to receive\n";
     } else {
