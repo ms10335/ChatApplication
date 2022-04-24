@@ -12,7 +12,8 @@
 #include <mutex>
 #include <string>
 
-
+#define BUFLENGTH 1024
+namespace fs = std::filesystem;
 class Server {
 private:
     std::fstream file;
@@ -69,7 +70,7 @@ void Server::accept_connection() {
     if (clientSocket == -1) {
         std::cerr << "Cannot establish connection with client\n";
     }
-    // close the listening server socket
+    //close the listening server socket
     close(socket_descriptor);
     memset(host, 0, NI_MAXHOST);
     memset(svc, 0, NI_MAXSERV);
@@ -83,12 +84,10 @@ void Server::accept_connection() {
         std::cout << host << " conected on " << ntohs(client.sin_port) << '\n';
     }
 }
-void Server::transmit_file() {
-    namespace fs = std::filesystem;
+void Server::transmit_file() {    
     std::string file_path = "/home/marcins/Data/Server/server.txt";
     std::fstream file;
-    fs::path p = file_path;
-    file.open(file_path, std::ios_base::in | std::ios_base::binary);
+    file.open(file_path, std::ios::in | std::ios::binary);
     if(file.is_open()) {
         std::cout << "File is ready to send\n";
     }else {
@@ -96,7 +95,7 @@ void Server::transmit_file() {
         return;
     }
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    std::cout << "Data to transimit" << content.size() << "bytes\n";  
+    std::cout << "Data to transimit: " << content.size() << " bytes\n";  
     std::cout << "Sending...\n";
     int bytesFilesSend = send(clientSocket, content.c_str(), content.length(), 0);
     std::cout << "Bytes sent: " << bytesFilesSend <<'\n';
@@ -106,11 +105,11 @@ void Server::handleInforamtion() {
     auto time_now = std::chrono::steady_clock::now();
     int bytesRead = 0;
     int bytesWrite = 0;
-    char buf[4096];
+    char buf[BUFLENGTH];
     while (true) {
         // rec messaga from client
-        memset(buf, 0, 4096);
-        bytesRead += recv(clientSocket, buf, 4096, 0);
+        memset(buf, 0, BUFLENGTH);
+        bytesRead += recv(clientSocket, buf, BUFLENGTH, 0);
         if (bytesRead == -1) {
             std::cerr << "There was a connecion issue\n";
             break;
@@ -131,7 +130,7 @@ void Server::handleInforamtion() {
         std::cout << ">";
         std::string answer;
         getline(std::cin, answer);
-        memset(buf, 0, 4096);
+        memset(buf, 0, BUFLENGTH);
         strcpy(buf, answer.c_str());
         if (answer == "exit") {
             // closed conection by serever
